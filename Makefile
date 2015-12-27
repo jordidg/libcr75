@@ -10,7 +10,7 @@ SOURCES=ifdhandler.c
 all:	libcr75.so
 
 libcr75.so: ${SOURCES}
-	${CC} -o libcr75.so ${SOURCES} -fPIC -D_REENTRANT -DIFDHANDLERv2 -Wall -I. ${CFLAGS} ${LDFLAGS} -lusb -shared
+	${CC} -o libcr75.so ${SOURCES} -fPIC -D_REENTRANT -DIFDHANDLERv2 -Wall -I. ${CFLAGS} ${LDFLAGS} -lusb-1.0 -shared
 
 clean-all:	clean
 	rm Makefile.inc || true
