@@ -25,8 +25,8 @@
 #define TIMEOUT 5000 /* timeout in ms */
 #define BUFFER_SIZE 16
 
-#define INS_SELECT_FILE 0xa4
 #define INS_READ_BINARY 0xb0
+#define INS_GET_RESPONSE 0xc0
 
 libusb_context *ctx = NULL;
 libusb_device_handle *handle = NULL;
@@ -249,7 +249,12 @@ int writeMessage(PUCHAR msg, size_t length) {
     libusb_control_transfer(handle, 0x40, 192, 0xffff, length, 0, 0, TIMEOUT);
 
     int transferred;
-    libusb_bulk_transfer(handle, 0x05, msg, length, &transferred, TIMEOUT);
+    DWORD i;
+    for(i = 0; i < length; i+= BUFFER_SIZE) {
+        DWORD bytes_remaining = length - i;
+        DWORD msg_length = (bytes_remaining < BUFFER_SIZE) ? bytes_remaining : BUFFER_SIZE;
+        libusb_bulk_transfer(handle, 0x05, &msg[i], msg_length, &transferred, TIMEOUT);
+    }
 }
 
 int readMessage(int expected_length, PUCHAR msg) {
@@ -391,38 +396,52 @@ RESPONSECODE IFDHTransmitToICC ( DWORD Lun, SCARD_IO_HEADER SendPci,
      IFD_PROTOCOL_NOT_SUPPORTED
   */
     syslog(LOG_DEBUG, "IFDHTransmitToICC");
-    writeMessage(TxBuffer, 5);
+    if(TxLength >= 5) {
+        writeMessage(TxBuffer, 5);
+    } else {
+        PUCHAR tmpTxBuffer = (PUCHAR) calloc(5, sizeof(UCHAR));
+        memcpy(tmpTxBuffer, TxBuffer, TxLength);
+        writeMessage(tmpTxBuffer, 5);
+        free(tmpTxBuffer);
+    }
 
     PUCHAR sw1 = (PUCHAR) malloc(sizeof(UCHAR));
     readMessage(1, sw1);
 
     if(TxLength > 5) {
-        if(*sw1 != INS_SELECT_FILE) {
-            *RxLength = 0;
-            return IFD_COMMUNICATION_ERROR;
-        }
         writeMessage(&TxBuffer[5], TxLength - 5);
         readMessage(1, sw1);
     }
 
-    if(*sw1 == INS_READ_BINARY) {
-        size_t response_length = (UCHAR) TxBuffer[4] + 2;
-        PUCHAR sw2 = (PUCHAR) malloc(response_length * sizeof(UCHAR));
-        readMessage(response_length, sw2);
+    switch(*sw1) {
+        case INS_GET_RESPONSE:
+        case INS_READ_BINARY: {
+            size_t response_length = (UCHAR) TxBuffer[4] + 2;
+            if(*sw1 == INS_GET_RESPONSE && TxBuffer[4] == 0) {
+                //FIXME: According to the specification if Le > 255 multiple bytes should be used
+                //Unfortunately only 00 is passed in, so we hardcode the value
+                response_length = 258;
+            }
+            PUCHAR sw2 = (PUCHAR) malloc(response_length * sizeof(UCHAR));
+            readMessage(response_length, sw2);
 
-        memcpy(RxBuffer, sw2, response_length);
-        *RxLength = response_length;
+            memcpy(RxBuffer, sw2, response_length);
+            *RxLength = response_length;
 
-        free(sw2);
-    } else {
-        PUCHAR sw2 = (PUCHAR) malloc(sizeof(UCHAR));
-        readMessage(1, sw2);
+            free(sw2);
+            break;
+        }
+        default: {
+            PUCHAR sw2 = (PUCHAR) malloc(sizeof(UCHAR));
+            readMessage(1, sw2);
 
-        memcpy(RxBuffer, sw1, 1);
-        memcpy(&RxBuffer[1], sw2, 1);
-        *RxLength = 2;
+            memcpy(RxBuffer, sw1, 1);
+            memcpy(&RxBuffer[1], sw2, 1);
+            *RxLength = 2;
 
-        free(sw2);
+            free(sw2);
+            break;
+        }
     }
 
     free(sw1);
