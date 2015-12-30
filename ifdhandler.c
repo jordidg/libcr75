@@ -9,8 +9,8 @@
 /
 ******************************************************************/
 
-#include <pcscdefines.h>
-#include <ifdhandler.h>
+#include "pcscdefines.h"
+#include "ifdhandler.h"
 #include <syslog.h>
 #include <pthread.h>
 #include <string.h>
@@ -45,7 +45,7 @@ void log_command(const char *prefix, const PUCHAR in, DWORD length) {
     strcat(out, " [");
     for(i=0; i<length; i++) {
         if(isprint(in[i])) {
-            strncat(out, &in[i], 1);
+            strncat(out, (char*) &in[i], 1);
         } else {
             strcat(out, ".");
         }
@@ -65,7 +65,7 @@ void *MonitorCardPresence(void *arg) {
             syslog(LOG_ERR, "Error %i while quering card presence.", err);
             card_present = IFD_COMMUNICATION_ERROR;
             if(err == LIBUSB_ERROR_NO_DEVICE)
-                return err;
+                return NULL;
             continue;
         }
 
@@ -330,16 +330,15 @@ RESPONSECODE IFDHPowerICC ( DWORD Lun, DWORD Action,
 
             memcpy(Atr, buffer, transferred);
 
-            UCHAR command[] = "\xff\x10\x13\xfc";
-            writeMessage((PUCHAR) command, strlen((char*) command));
-            PUCHAR msg = (PUCHAR) malloc(strlen((char*) command) * sizeof(UCHAR));
-            readMessage(strlen((char*) command), msg);
-            if(strncmp((char*) command, (char*) msg, strlen((char*) command))) {
+            UCHAR command[] = {0xFF, 0x10, 0x13, 0xFC};
+            writeMessage(command, sizeof(command));
+
+            UCHAR msg[sizeof(command)];
+            readMessage(sizeof(command), msg);
+            if(memcmp(command, msg, sizeof(command))) {
                 syslog(LOG_ERR, "Read invalid");
-                free(msg);
                 return IFD_COMMUNICATION_ERROR;
             }
-            free(msg);
 
             libusb_control_transfer(handle, 0x40, 165, 0xffff, 0xffff, (unsigned char*) "\x00\x13", 2, TIMEOUT);
             return IFD_SUCCESS;
@@ -421,44 +420,29 @@ RESPONSECODE IFDHTransmitToICC ( DWORD Lun, SCARD_IO_HEADER SendPci,
     if(TxLength >= 5) {
         writeMessage(TxBuffer, 5);
     } else {
-        PUCHAR tmpTxBuffer = (PUCHAR) calloc(5, sizeof(UCHAR));
+        UCHAR tmpTxBuffer[5] = { 0 };
         memcpy(tmpTxBuffer, TxBuffer, TxLength);
         writeMessage(tmpTxBuffer, 5);
-        free(tmpTxBuffer);
     }
 
-    PUCHAR sw1 = (PUCHAR) malloc(sizeof(UCHAR));
-    readMessage(1, sw1);
+    readMessage(1, RxBuffer);
 
     if(Lc > 0) {
         writeMessage(&TxBuffer[5], Lc);
-        readMessage(1, sw1);
+        readMessage(1, RxBuffer);
     }
 
-    if(Le == 0 || *sw1 == 0x6c) {
-        PUCHAR sw2 = (PUCHAR) malloc(sizeof(UCHAR));
-        readMessage(1, sw2);
-
-        memcpy(RxBuffer, sw1, 1);
-        memcpy(&RxBuffer[1], sw2, 1);
+    if(Le == 0 || RxBuffer[0] == 0x6c) {
+        readMessage(1, &RxBuffer[1]);
         *RxLength = 2;
-
-        free(sw2);
     } else {
         size_t response_length = (UCHAR) TxBuffer[4] + 2; // Data + SW1 + SW2
         if(TxLength == 5 && TxBuffer[4] == 0) {
             response_length = 258;
         }
-        PUCHAR sw2 = (PUCHAR) malloc(response_length * sizeof(UCHAR));
-        readMessage(response_length, sw2);
-
-        memcpy(RxBuffer, sw2, response_length);
+        readMessage(response_length, RxBuffer);
         *RxLength = response_length;
-
-        free(sw2);
     }
-
-    free(sw1);
 
     return IFD_SUCCESS;
 }
