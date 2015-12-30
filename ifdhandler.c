@@ -27,8 +27,11 @@
 
 libusb_context *ctx = NULL;
 libusb_device_handle *handle = NULL;
-RESPONSECODE card_present = IFD_ICC_NOT_PRESENT;
 pthread_t card_monitor = NULL;
+
+RESPONSECODE card_present = IFD_ICC_NOT_PRESENT;
+UCHAR cached_Atr[MAX_ATR_SIZE];
+DWORD cached_AtrLength = 0;
 
 void log_command(const char *prefix, const PUCHAR in, DWORD length) {
     char out[4 * length * sizeof(char) + 5];
@@ -174,8 +177,12 @@ RESPONSECODE IFDHGetCapabilities ( DWORD Lun, DWORD Tag,
      IFD_SUCCESS
      IFD_ERROR_TAG
   */
-  syslog(LOG_DEBUG, "IFDHGetCapabilities: %#06lX", Tag);
   switch(Tag) {
+        case TAG_IFD_ATR: {
+            *Length = cached_AtrLength;
+            memcpy(Value, cached_Atr, cached_AtrLength);
+            break;
+        }
         case TAG_IFD_SIMULTANEOUS_ACCESS: {
             *Length = 1;
             *Value = 0;
@@ -328,7 +335,9 @@ RESPONSECODE IFDHPowerICC ( DWORD Lun, DWORD Action,
                 return IFD_COMMUNICATION_ERROR;
             }
 
+            cached_AtrLength = *AtrLength;
             memcpy(Atr, buffer, transferred);
+            memcpy(cached_Atr, buffer, cached_AtrLength);
 
             UCHAR command[] = {0xFF, 0x10, 0x13, 0xFC};
             writeMessage(command, sizeof(command));
