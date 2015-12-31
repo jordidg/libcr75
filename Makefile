@@ -23,4 +23,3 @@ install:	all
 	install -c -m 0644 Info.plist "${DRIVER_DIR}/Contents"
 	install -c -d "${DRIVER_DIR}/Contents/Linux"
 	install -c -m 0755 libcr75.so "${DRIVER_DIR}/Contents/Linux"
-	install -c -m 0644 50-pcscd-transcendcr75.rules /etc/udev/rules.d/.
