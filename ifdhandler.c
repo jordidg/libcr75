@@ -17,7 +17,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <ctype.h>
-#include <libusb-1.0/libusb.h>
+#include <libusb.h>
 
 #define VENDOR_ID 0x1307
 #define PRODUCT_ID 0x0361
