@@ -254,6 +254,7 @@ whichever location your reader resides.
 #ifndef _ifd_handler_h_
 #define _ifd_handler_h_
 
+#include <wintypes.h>
 #include <pcsclite.h>
 
 	/*

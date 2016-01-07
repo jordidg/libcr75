@@ -9,7 +9,6 @@
 /
 ******************************************************************/
 
-#include "pcscdefines.h"
 #include "ifdhandler.h"
 #include <syslog.h>
 #include <pthread.h>
@@ -60,7 +59,7 @@ void log_command(const char *prefix, const PUCHAR in, DWORD length) {
 
 void *MonitorCardPresence(void *arg) {
     unsigned char buffer[1];
-    int len = NULL;
+    int len;
 
     while(1) {
         int err = libusb_interrupt_transfer(handle, 0x84, buffer, sizeof(buffer), &len, 0);
@@ -219,6 +218,7 @@ RESPONSECODE IFDHSetCapabilities ( DWORD Lun, DWORD Tag,
      IFD_ERROR_VALUE_READ_ONLY
   */
   syslog(LOG_DEBUG, "IFDHSetCapabilities");
+  return IFD_NOT_SUPPORTED;
   
 }
 
@@ -242,7 +242,7 @@ RESPONSECODE IFDHSetProtocolParameters ( DWORD Lun, DWORD Protocol,
      IFD_COMMUNICATION_ERROR
      IFD_PROTOCOL_NOT_SUPPORTED
   */
-  syslog(LOG_DEBUG, "IFDHSetProtocolParameters: Protocol %lu, Flags %i, PTS1 %i, PTS2 %i, PTS3 %i", Protocol, Flags, PTS1, PTS2, PTS3);
+  syslog(LOG_DEBUG, "IFDHSetProtocolParameters: Protocol %u, Flags %i, PTS1 %i, PTS2 %i, PTS3 %i", Protocol, Flags, PTS1, PTS2, PTS3);
   return IFD_SUCCESS;
 
 }
@@ -353,6 +353,7 @@ RESPONSECODE IFDHPowerICC ( DWORD Lun, DWORD Action,
             return IFD_SUCCESS;
         }
   }
+    return IFD_NOT_SUPPORTED;
 
 }
 
@@ -456,28 +457,13 @@ RESPONSECODE IFDHTransmitToICC ( DWORD Lun, SCARD_IO_HEADER SendPci,
     return IFD_SUCCESS;
 }
 
-RESPONSECODE IFDHControl ( DWORD Lun, PUCHAR TxBuffer, 
-			 DWORD TxLength, PUCHAR RxBuffer, 
-			 PDWORD RxLength ) {
+RESPONSECODE IFDHControl ( DWORD Lun, DWORD dwControlCode,
+                           PUCHAR TxBuffer, DWORD TxLength,
+                           PUCHAR RxBuffer, DWORD RxLength,
+                           PDWORD pdwBytesReturned ) {
 
-  /* This function performs a data exchange with the reader (not the card)
-     specified by Lun.  Here XXXX will only be used.
-     It is responsible for abstracting functionality such as PIN pads,
-     biometrics, LCD panels, etc.  You should follow the MCT, CTBCS 
-     specifications for a list of accepted commands to implement.
-
-     TxBuffer - Transmit data
-     TxLength - Length of this buffer.
-     RxBuffer - Receive data
-     RxLength - Length of the received data.  This function will be passed
-     the length of the buffer RxBuffer and it must set this to the length
-     of the received data.
-
-     Notes:
-     RxLength should be zero on error.
-  */
     syslog(LOG_DEBUG, "IFDHControl");
-
+    return IFD_NOT_SUPPORTED;
 }
 
 RESPONSECODE IFDHICCPresence( DWORD Lun ) {
