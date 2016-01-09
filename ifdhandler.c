@@ -24,6 +24,19 @@
 #define TIMEOUT 5000 /* timeout in ms */
 #define BUFFER_SIZE 16
 
+#define CHECK(x) do { \
+    RESPONSECODE retval = (x); \
+    if (retval != 0) { \
+        return retval; \
+    } \
+} while (0)
+#define CHECK_LIBUSB(x) do { \
+    int retval = (x); \
+    if (retval < 0) { \
+        return libusb_error_to_responsecode(retval); \
+    } \
+} while (0)
+
 libusb_context *ctx = NULL;
 libusb_device_handle *handle = NULL;
 pthread_t card_monitor = NULL;
@@ -247,33 +260,48 @@ RESPONSECODE IFDHSetProtocolParameters ( DWORD Lun, DWORD Protocol,
 
 }
 
-int writeMessage(PUCHAR msg, size_t length) {
+RESPONSECODE libusb_error_to_responsecode(const int err) {
+    switch(err) {
+        case LIBUSB_ERROR_TIMEOUT:
+            return IFD_RESPONSE_TIMEOUT;
+        case LIBUSB_ERROR_NO_DEVICE:
+            return IFD_NO_SUCH_DEVICE;
+        case LIBUSB_ERROR_PIPE:
+        case LIBUSB_ERROR_OVERFLOW:
+        default:
+            return IFD_COMMUNICATION_ERROR;
+    }
+}
+
+RESPONSECODE writeMessage(PUCHAR msg, size_t length) {
     log_command(">", msg, length);
 
-    libusb_control_transfer(handle, 0x40, 192, 0xffff, length, 0, 0, TIMEOUT);
+    CHECK_LIBUSB(libusb_control_transfer(handle, 0x40, 192, 0xffff, length, 0, 0, TIMEOUT));
 
     int transferred;
     DWORD i;
     for(i = 0; i < length; i+= BUFFER_SIZE) {
         DWORD bytes_remaining = length - i;
         DWORD msg_length = (bytes_remaining < BUFFER_SIZE) ? bytes_remaining : BUFFER_SIZE;
-        libusb_bulk_transfer(handle, 0x05, &msg[i], msg_length, &transferred, TIMEOUT);
+        CHECK_LIBUSB(libusb_bulk_transfer(handle, 0x05, &msg[i], msg_length, &transferred, TIMEOUT));
     }
+    return IFD_SUCCESS;
 }
 
-int readMessage(int expected_length, PUCHAR msg) {
-    libusb_control_transfer(handle, 0x40, 193, 0xffff, expected_length, 0, 0, TIMEOUT);
+RESPONSECODE readMessage(int expected_length, PUCHAR msg) {
+    CHECK_LIBUSB(libusb_control_transfer(handle, 0x40, 193, 0xffff, expected_length, 0, 0, TIMEOUT));
 
     int transferred;
     int total_transferred = 0;
     UCHAR buffer[BUFFER_SIZE];
     while(total_transferred < expected_length) {
-        libusb_bulk_transfer(handle, 0x86, buffer, sizeof(buffer), &transferred, TIMEOUT);
+        CHECK_LIBUSB(libusb_bulk_transfer(handle, 0x86, buffer, sizeof(buffer), &transferred, TIMEOUT));
         memcpy(&msg[total_transferred], buffer, transferred);
         total_transferred += transferred;
     }
 
     log_command("<", msg, total_transferred);
+    return IFD_SUCCESS;
 }
 
 
@@ -317,19 +345,18 @@ RESPONSECODE IFDHPowerICC ( DWORD Lun, DWORD Action,
      IFD_NOT_SUPPORTED
   */
     syslog(LOG_DEBUG, "IFDHPowerICC");
+
     switch(Action) {
         case IFD_RESET:
         case IFD_POWER_UP: {
             unsigned char buffer[BUFFER_SIZE];
-            libusb_control_transfer(handle, 0xc0, 161, 0xffff, 0xffff, buffer, sizeof(buffer), TIMEOUT);
+            CHECK_LIBUSB(libusb_control_transfer(handle, 0xc0, 161, 0xffff, 0xffff, buffer, sizeof(buffer), TIMEOUT));
+
             *AtrLength = buffer[0];
 
             int transferred;
-            int err = libusb_bulk_transfer(handle, 0x86, buffer, sizeof(buffer), &transferred, TIMEOUT);
-            if(err) {
-                syslog(LOG_ERR, "Error %i while resetting card", err);
-                return IFD_COMMUNICATION_ERROR;
-            }
+            CHECK_LIBUSB(libusb_bulk_transfer(handle, 0x86, buffer, sizeof(buffer), &transferred, TIMEOUT));
+
             if(*AtrLength != transferred) {
                 syslog(LOG_ERR, "Read invalid");
                 return IFD_COMMUNICATION_ERROR;
@@ -340,16 +367,16 @@ RESPONSECODE IFDHPowerICC ( DWORD Lun, DWORD Action,
             memcpy(cached_Atr, buffer, cached_AtrLength);
 
             UCHAR command[] = {0xFF, 0x10, 0x13, 0xFC};
-            writeMessage(command, sizeof(command));
+            CHECK(writeMessage(command, sizeof(command)));
 
             UCHAR msg[sizeof(command)];
-            readMessage(sizeof(command), msg);
+            CHECK(readMessage(sizeof(command), msg));
             if(memcmp(command, msg, sizeof(command))) {
                 syslog(LOG_ERR, "Read invalid");
                 return IFD_COMMUNICATION_ERROR;
             }
 
-            libusb_control_transfer(handle, 0x40, 165, 0xffff, 0xffff, (unsigned char*) "\x00\x13", 2, TIMEOUT);
+            CHECK_LIBUSB(libusb_control_transfer(handle, 0x40, 165, 0xffff, 0xffff, (unsigned char*) "\x00\x13", 2, TIMEOUT));
             return IFD_SUCCESS;
         }
   }
@@ -428,29 +455,29 @@ RESPONSECODE IFDHTransmitToICC ( DWORD Lun, SCARD_IO_HEADER SendPci,
     apdu_message_length(TxBuffer, TxLength, &Lc, &Le);
 
     if(TxLength >= 5) {
-        writeMessage(TxBuffer, 5);
+        CHECK(writeMessage(TxBuffer, 5));
     } else {
         UCHAR tmpTxBuffer[5] = { 0 };
         memcpy(tmpTxBuffer, TxBuffer, TxLength);
-        writeMessage(tmpTxBuffer, 5);
+        CHECK(writeMessage(tmpTxBuffer, 5));
     }
 
-    readMessage(1, RxBuffer);
+    CHECK(readMessage(1, RxBuffer));
 
     if(Lc > 0) {
-        writeMessage(&TxBuffer[5], Lc);
-        readMessage(1, RxBuffer);
+        CHECK(writeMessage(&TxBuffer[5], Lc));
+        CHECK(readMessage(1, RxBuffer));
     }
 
     if(Le == 0 || RxBuffer[0] == 0x6c) {
-        readMessage(1, &RxBuffer[1]);
+        CHECK(readMessage(1, &RxBuffer[1]));
         *RxLength = 2;
     } else {
         size_t response_length = (UCHAR) TxBuffer[4] + 2; // Data + SW1 + SW2
         if(TxLength == 5 && TxBuffer[4] == 0) {
             response_length = 258;
         }
-        readMessage(response_length, RxBuffer);
+        CHECK(readMessage(response_length, RxBuffer));
         *RxLength = response_length;
     }
 
