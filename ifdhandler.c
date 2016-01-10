@@ -46,28 +46,29 @@ UCHAR cached_Atr[MAX_ATR_SIZE];
 DWORD cached_AtrLength = 0;
 
 void log_command(const char *prefix, const PUCHAR in, DWORD length) {
-    char out[4 * length * sizeof(char) + 5];
-    strcpy(out, "");
+#ifdef DEBUG
+        // 2 + 1 characters + 1 space for every byte
+        // 3 characters for brackets + NULL
+        char out[4 * length + 3];
+        strcpy(out, "");
 
-    int i;
-    for(i=0; i<length; i++) {
-        sprintf(&out[strlen(out)], "%02X", in[i]);
-        if(i < length - 1) {
-            strcat(out, " ");
+        DWORD i;
+        for(i=0; i<length; i++) {
+            sprintf(&out[3*i], "%02X ", in[i]);
         }
-    }
 
-    strcat(out, " [");
-    for(i=0; i<length; i++) {
-        if(isprint(in[i])) {
-            strncat(out, (char*) &in[i], 1);
-        } else {
-            strcat(out, ".");
+        strcat(out, "[");
+        for(i=0; i<length; i++) {
+            if(isprint(in[i])) {
+                strncat(out, (char*) &in[i], 1);
+            } else {
+                strcat(out, ".");
+            }
         }
-    }
-    strcat(out, "]");
+        strcat(out, "]");
 
-    syslog(LOG_DEBUG, "%s %s", prefix, out);
+        syslog(LOG_DEBUG, "%s %s", prefix, out);
+#endif
 }
 
 void *MonitorCardPresence(void *arg) {

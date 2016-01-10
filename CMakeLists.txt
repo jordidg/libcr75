@@ -4,6 +4,7 @@ project (cr75 C)
 set(cr75_VERSION 0.0.1)
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH} "${CMAKE_SOURCE_DIR}/CMakeModules")
+set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -DDEBUG")
 
 find_package(PCSCLite REQUIRED)
 include_directories(${PCSCLITE_INCLUDE_DIR})
