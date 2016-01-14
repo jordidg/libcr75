@@ -1,11 +1,10 @@
 /*****************************************************************
 /
 / File   :   ifdhandler.c
-/ Author :   David Corcoran <corcoran@linuxnet.com>
-/ Date   :   June 15, 2000
+/ Author :   Jordi De Groof <jordi.degroof@gmail.com>
+/ Date   :   January 14, 2016
 / Purpose:   This provides reader specific low-level calls.
-/            See http://www.linuxnet.com for more information.
-/ License:   See file LICENSE
+/ License:   See file COPYING
 /
 ******************************************************************/
 
