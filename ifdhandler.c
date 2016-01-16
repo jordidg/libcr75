@@ -44,7 +44,7 @@
 
 libusb_context *ctx = NULL;
 libusb_device_handle *handle = NULL;
-pthread_t card_monitor = NULL;
+pthread_t card_monitor;
 
 RESPONSECODE card_present = IFD_ICC_NOT_PRESENT;
 UCHAR cached_Atr[MAX_ATR_SIZE];
