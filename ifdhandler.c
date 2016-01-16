@@ -261,7 +261,7 @@ RESPONSECODE IFDHSetProtocolParameters ( DWORD Lun, DWORD Protocol,
      IFD_COMMUNICATION_ERROR
      IFD_PROTOCOL_NOT_SUPPORTED
   */
-  syslog(LOG_DEBUG, "IFDHSetProtocolParameters: Protocol%"PRIdword", Flags %i, PTS1 %i, PTS2 %i, PTS3 %i", Protocol, Flags, PTS1, PTS2, PTS3);
+  syslog(LOG_DEBUG, "IFDHSetProtocolParameters: Protocol %"PRIdword", Flags %i, PTS1 %i, PTS2 %i, PTS3 %i", Protocol, Flags, PTS1, PTS2, PTS3);
   return IFD_SUCCESS;
 
 }
