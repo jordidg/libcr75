@@ -1,4 +1,5 @@
 # libCR75
+[![Build Status](https://travis-ci.org/jordidg/libcr75.svg?branch=master)](https://travis-ci.org/jordidg/libcr75)
 
 libCR75 implements a PCSC smartcard driver for the Transcend CR-75 51-in-1 Card Reader/Writer.
 

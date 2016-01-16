@@ -1,0 +1,23 @@
+language: c
+
+sudo: required
+
+os:
+  - linux
+  - osx
+
+compiler:
+  - gcc
+  - clang
+
+before_install:
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo apt-get -qq update && sudo apt-get install -y libpcsclite-dev libusb-1.0-0-dev; fi
+  - if [[ "$TRAVIS_OS_NAME" == "osx" ]]; then brew update && brew install libusb; fi
+
+before_script:
+  - mkdir build
+  - cd build
+  - cmake ..
+
+script:
+  - make
