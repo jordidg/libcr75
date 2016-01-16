@@ -1,7 +1,7 @@
 cmake_minimum_required (VERSION 2.6)
 
 project (cr75 C)
-set(cr75_VERSION 0.0.1)
+set(cr75_VERSION 0.1.0)
 set(CMAKE_C_FLAGS "-std=c99 -Wall -pedantic")
 
 if(POLICY CMP0042)
