@@ -10,7 +10,6 @@
 
 #include "ifdhandler.h"
 #include <syslog.h>
-#include <pthread.h>
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -44,7 +43,7 @@
 
 libusb_context *ctx = NULL;
 libusb_device_handle *handle = NULL;
-pthread_t card_monitor;
+struct libusb_transfer *transfer = NULL;
 
 RESPONSECODE card_present = IFD_ICC_NOT_PRESENT;
 UCHAR cached_Atr[MAX_ATR_SIZE];
@@ -76,28 +75,29 @@ void log_command(const char *prefix, const PUCHAR in, DWORD length) {
 #endif
 }
 
-void *MonitorCardPresence(void *arg) {
-    unsigned char buffer[1];
-    int len;
-
-    while(1) {
-        int err = libusb_interrupt_transfer(handle, 0x84, buffer, sizeof(buffer), &len, 0);
-        if(err) {
-            syslog(LOG_ERR, "Error %i while quering card presence.", err);
-            card_present = IFD_COMMUNICATION_ERROR;
-            if(err == LIBUSB_ERROR_NO_DEVICE)
-                return NULL;
-            continue;
-        }
-
-        if(len == 1 && buffer[0] == 0x01) {
-            syslog(LOG_DEBUG, "Card detected");
-            card_present = IFD_ICC_PRESENT;
-        } else {
-            syslog(LOG_DEBUG, "Card not present");
-            card_present = IFD_ICC_NOT_PRESENT;
-        }
+int submit_transfer(struct libusb_transfer *transfer) {
+    int err = libusb_submit_transfer(transfer);
+    switch(err) {
+        case 0:
+            break;
+        case LIBUSB_ERROR_NO_DEVICE:
+            syslog(LOG_ERR, "Device not connected");
+            break;
+        default:
+            syslog(LOG_ERR, "Error %i while monitoring card status", err);
     }
+    return err;
+}
+
+static void LIBUSB_CALL MonitorCardPresence(struct libusb_transfer *transfer) {
+    if(transfer->buffer[0] == 0x01) {
+        syslog(LOG_INFO, "Card detected");
+        card_present = IFD_ICC_PRESENT;
+    } else {
+        syslog(LOG_INFO, "Card not present");
+        card_present = IFD_ICC_NOT_PRESENT;
+    }
+    submit_transfer(transfer);
 }
 
 
@@ -136,24 +136,33 @@ RESPONSECODE IFDHCreateChannel ( DWORD Lun, DWORD Channel ) {
      IFD_COMMUNICATION_ERROR
   */
     syslog(LOG_DEBUG, "IFDHCreateChannel");
-    if(libusb_init(&ctx) != 0)
+    int err = libusb_init(&ctx);
+    if(err) {
+        syslog(LOG_ERR, "Error %i while initializing device", err);
         return IFD_COMMUNICATION_ERROR;
+    }
 
     handle = libusb_open_device_with_vid_pid(ctx, VENDOR_ID, PRODUCT_ID);
-    if(handle == NULL)
+    if(!handle) {
+        syslog(LOG_ERR, "Unable to obtain handle");
         return IFD_COMMUNICATION_ERROR;
+    }
 
-    int err = libusb_claim_interface(handle, INTERFACE);
+    err = libusb_claim_interface(handle, INTERFACE);
     if(err) {
         syslog(LOG_ERR, "Error %i while claiming interface", err);
         return IFD_COMMUNICATION_ERROR;
     }
 
-    if(pthread_create(&card_monitor, NULL, MonitorCardPresence, NULL)) {
-        syslog(LOG_ERR, "Error creation card presence monitor thread");
+    unsigned char *buffer = malloc(1 * sizeof(unsigned char));
+    struct libusb_transfer *transfer = libusb_alloc_transfer(0);
+    if (!transfer)
         return IFD_COMMUNICATION_ERROR;
-    }
+    transfer->flags = LIBUSB_TRANSFER_FREE_BUFFER;
+    libusb_fill_interrupt_transfer(transfer, handle, 0x84, buffer, 1, MonitorCardPresence, NULL, 0);
+    submit_transfer(transfer);
 
+    syslog(LOG_DEBUG, "IFDHCreateChannel completed");
     return IFD_SUCCESS;
 }
 
@@ -169,7 +178,11 @@ RESPONSECODE IFDHCloseChannel ( DWORD Lun ) {
      IFD_SUCCESS
      IFD_COMMUNICATION_ERROR     
   */
-    pthread_cancel(card_monitor);
+    syslog(LOG_DEBUG, "IFDHCloseChannel");
+    libusb_cancel_transfer(transfer);
+    libusb_handle_events_completed(ctx, NULL);
+    libusb_free_transfer(transfer);
+
     libusb_release_interface(handle, INTERFACE);
     libusb_close(handle);
     libusb_exit(ctx);
@@ -195,6 +208,7 @@ RESPONSECODE IFDHGetCapabilities ( DWORD Lun, DWORD Tag,
      IFD_SUCCESS
      IFD_ERROR_TAG
   */
+  syslog(LOG_DEBUG, "IFDHGetCapabilities");
   switch(Tag) {
         case TAG_IFD_ATR: {
             *Length = cached_AtrLength;
@@ -508,5 +522,7 @@ RESPONSECODE IFDHICCPresence( DWORD Lun ) {
      IFD_ICC_NOT_PRESENT
      IFD_COMMUNICATION_ERROR
   */
+    struct timeval tv = {0};
+    libusb_handle_events_timeout_completed(ctx, &tv, NULL);
     return card_present;
 }
